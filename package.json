@@ -1,0 +1,31 @@
+{
+	"name": "text-join-bot",
+	"version": "1.0.0",
+	"description": "",
+	"main": "app.js",
+	"scripts": {
+		"start": "node app.js",
+		"register": "node commands.js",
+		"dev": "nodemon app.js"
+	},
+	"type": "module",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Jacobwill2501/text-join-bot.git"
+	},
+	"author": "jacob williams",
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/Jacobwill2501/text-join-bot/issues"
+	},
+	"homepage": "https://github.com/Jacobwill2501/text-join-bot#readme",
+	"dependencies": {
+		"discord-interactions": "^4.0.0",
+		"discord.js": "^14.16.3",
+		"dotenv": "^16.0.3",
+		"express": "^4.18.2"
+	},
+	"devDependencies": {
+		"nodemon": "3.1.7"
+	}
+}
