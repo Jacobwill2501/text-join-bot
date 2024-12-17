@@ -6,10 +6,16 @@ import {
 	REST,
 	Routes,
 } from 'discord.js';
+import { KeyValueDB } from './KeyValueDB.js';
 
 // Replace with your bot's token and client ID
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.APP_ID;
+const MONITORED_ASKER_DB_PATH = './database/monitored-asker.txt';
+const ASKER_NUMBER_DB_PATH = './database/asker-number.txt';
+
+const monitoredAskerDB = new KeyValueDB(MONITORED_ASKER_DB_PATH);
+const askerNumberDB = new KeyValueDB(ASKER_NUMBER_DB_PATH);
 
 // Create a client instance
 const client = new Client({
@@ -32,6 +38,13 @@ const monitoring = new Map();
 				option
 					.setName('user')
 					.setDescription('The user to monitor')
+					.setRequired(true)
+			)
+			.addStringOption((option) =>
+				option
+					.setName('phone-number')
+					.setDescription('Phone Number to be notified to')
+					.setMaxLength(10)
 					.setRequired(true)
 			),
 		new SlashCommandBuilder()
@@ -67,8 +80,11 @@ client.on('interactionCreate', async (interaction) => {
 
 	if (interaction.commandName === 'monitor') {
 		const userToMonitor = interaction.options.getUser('user');
+		const phoneNumber = interaction.options.getString('phone-number');
 
 		monitoring.set(userToMonitor.id, interaction.user.id); // Map monitored user ID to caller's user ID
+		await monitoredAskerDB.write(userToMonitor.id, [interaction.user.id]); // Write to monitored-asker db
+		await askerNumberDB.write(interaction.user.id, [phoneNumber]); // Write to asker-number db
 
 		await interaction.reply({
 			content: `You will be notified when ${userToMonitor.tag} joins a voice channel.`,
@@ -81,6 +97,8 @@ client.on('interactionCreate', async (interaction) => {
 
 		if (monitoring.has(userToStopMonitoring.id)) {
 			monitoring.delete(userToStopMonitoring.id);
+			await monitoredAskerDB.delete(userToStopMonitoring.id); // Delete from monitored-asker db
+			await askerNumberDB.delete(interaction.user.id); // Delete from asker-number db
 
 			await interaction.reply({
 				content: `You will no longer receive notifications for ${userToStopMonitoring.tag}.`,
@@ -110,6 +128,8 @@ client.on('voiceStateUpdate', (oldState, newState) => {
 				notifier.send(
 					`${newState.member.user.tag} joined the voice channel: ${newState.channel.name}`
 				);
+
+				// send text instead
 			});
 		}
 	}
