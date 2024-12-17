@@ -6,7 +6,8 @@ import {
 	REST,
 	Routes,
 } from 'discord.js';
-import { KeyValueDB } from './KeyValueDB.js';
+import { KeyValueDB } from './database/KeyValueDB.js';
+import { monitor, stopmonitor } from './commands/index.js';
 
 // Replace with your bot's token and client ID
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -24,9 +25,6 @@ const client = new Client({
 		GatewayIntentBits.GuildVoiceStates, // Required to monitor voice state updates
 	],
 });
-
-// Store monitoring data in memory
-const monitoring = new Map();
 
 // Register slash commands
 (async () => {
@@ -78,59 +76,40 @@ client.once('ready', () => {
 client.on('interactionCreate', async (interaction) => {
 	if (!interaction.isChatInputCommand()) return;
 
-	if (interaction.commandName === 'monitor') {
-		const userToMonitor = interaction.options.getUser('user');
-		const phoneNumber = interaction.options.getString('phone-number');
-
-		monitoring.set(userToMonitor.id, interaction.user.id); // Map monitored user ID to caller's user ID
-		await monitoredAskerDB.write(userToMonitor.id, [interaction.user.id]); // Write to monitored-asker db
-		await askerNumberDB.write(interaction.user.id, [phoneNumber]); // Write to asker-number db
-
-		await interaction.reply({
-			content: `You will be notified when ${userToMonitor.tag} joins a voice channel.`,
-			ephemeral: true,
-		});
-	}
-
-	if (interaction.commandName === 'stopmonitor') {
-		const userToStopMonitoring = interaction.options.getUser('user');
-
-		if (monitoring.has(userToStopMonitoring.id)) {
-			monitoring.delete(userToStopMonitoring.id);
-			await monitoredAskerDB.delete(userToStopMonitoring.id); // Delete from monitored-asker db
-			await askerNumberDB.delete(interaction.user.id); // Delete from asker-number db
-
-			await interaction.reply({
-				content: `You will no longer receive notifications for ${userToStopMonitoring.tag}.`,
-				ephemeral: true,
-			});
-		} else {
-			await interaction.reply({
-				content: `You are not monitoring ${userToStopMonitoring.tag}.`,
-				ephemeral: true,
-			});
-		}
+	switch (interaction.commandName) {
+		case 'monitor':
+			monitor();
+			break;
+		case 'stopmonitor':
+			stopmonitor();
+			break;
+		default:
+			console.log('no command');
+			break;
 	}
 });
 
 // Bot event: voice state update
-client.on('voiceStateUpdate', (oldState, newState) => {
+client.on('voiceStateUpdate', async (oldState, newState) => {
 	// Check if the user joined a voice channel
 	if (!oldState.channel && newState.channel) {
 		const monitoredUserId = newState.id; // The user who triggered the event
+		const value = await monitoredAskerDB.read(monitoredUserId);
 
 		// Check if this user is being monitored
-		if (monitoring.has(monitoredUserId)) {
-			const notifierUserId = monitoring.get(monitoredUserId);
+		if (value) {
+			for (const monitor of value) {
+				const result = await askerNumberDB.read(monitor); //TODO: add error handling eventually
+				const [phoneNumber] = result || [];
+				//monitor is the id of the person monitoring
+				client.users.fetch(monitor).then((notifier) => {
+					notifier.send(
+						`${newState.member.user.tag} joined the voice channel: ${newState.channel.name}. Sending text to ${phoneNumber}`
+					);
 
-			// Send a DM to the notifier
-			client.users.fetch(notifierUserId).then((notifier) => {
-				notifier.send(
-					`${newState.member.user.tag} joined the voice channel: ${newState.channel.name}`
-				);
-
-				// send text instead
-			});
+					// send text instead
+				});
+			}
 		}
 	}
 });

@@ -22,8 +22,9 @@ export class KeyValueDB {
 		const keyValueStore = {};
 
 		lines.forEach((line) => {
-			const [key, value] = line.split(','); // Split on commas instead of equals sign
-			keyValueStore[key] = value ? value.split(',') : []; // Handle arrays correctly
+			const key = line.substring(0, line.indexOf(','));
+			const value = line.substring(line.indexOf(',') + 1).split(',');
+			keyValueStore[key] = value ?? [];
 		});
 
 		return keyValueStore;
@@ -32,40 +33,27 @@ export class KeyValueDB {
 	// Helper: Save key-value pairs from an object into the file
 	async _saveFile(keyValueStore) {
 		const content = Object.entries(keyValueStore)
-			.map(([key, value]) => `${key},${value.join(',')}`) // Use commas instead of equals sign
+			.map(([key, value]) => `${key},${value.join(',')}`) // Use commas
 			.join('\n');
 		await fs.writeFile(this.filePath, content, 'utf8');
 	}
 
 	// Create or Update: Write key-value pair (merge arrays if key exists)
-	async write(key, value) {
+	async write(key, value, mergeArray) {
 		if (!Array.isArray(value)) {
 			throw new Error('The value must be an array.');
 		}
 
 		const keyValueStore = await this._loadFile();
 
-		// Step 1: Check if the value is already present in any other key's array
-		const valueExistsInAnotherKey = Object.values(keyValueStore).some(
-			(existingValueArray) => existingValueArray.includes(value[0]) // Check if the first value exists in any array
-		);
-
-		if (valueExistsInAnotherKey) {
-			// If the value exists in any other key, don't modify the original key's array, just create a new key
-			console.log(
-				`Value "${value[0]}" already exists in another key. Adding as new key.`
+		// Step 1: If the key exists, merge arrays without duplicates
+		if (keyValueStore[key] && mergeArray) {
+			const mergedArray = Array.from(
+				new Set([...keyValueStore[key], ...value]) // Merge arrays and remove duplicates
 			);
-			keyValueStore[key] = value; // Add new key-value pair
+			keyValueStore[key] = mergedArray;
 		} else {
-			// Step 2: If the key exists, merge arrays without duplicates
-			if (keyValueStore[key]) {
-				const mergedArray = Array.from(
-					new Set([...keyValueStore[key], ...value]) // Merge arrays and remove duplicates
-				);
-				keyValueStore[key] = mergedArray;
-			} else {
-				keyValueStore[key] = value; // Create a new key-value pair
-			}
+			keyValueStore[key] = value; // Create a new key-value pair
 		}
 
 		await this._saveFile(keyValueStore);
@@ -108,5 +96,33 @@ export class KeyValueDB {
 		delete keyValueStore[key];
 		await this._saveFile(keyValueStore);
 		console.log(`Key "${key}" deleted successfully.`);
+	}
+
+	// Delete the monitor for a specific key
+	async deleteMonitor(key, monitorToRemove) {
+		const keyValueStore = await this._loadFile();
+
+		// If the key doesn't exist in the store, nothing to remove
+		if (!keyValueStore[key]) {
+			console.log(`Key "${key}" not found.`);
+			return;
+		}
+
+		let monitors = keyValueStore[key];
+
+		// Remove the monitor from the list
+		monitors = monitors.filter((monitor) => monitor !== monitorToRemove);
+
+		// If no monitors are left, delete the key entirely
+		if (monitors.length === 0) {
+			delete keyValueStore[key];
+		} else {
+			// Otherwise, update the key with the remaining monitors
+			keyValueStore[key] = monitors;
+		}
+
+		// Save the updated data back to the file
+		await this._saveFile(keyValueStore);
+		console.log(`Monitor "${monitorToRemove}" removed successfully.`);
 	}
 }
